@@ -47,10 +47,17 @@ Consequências práticas adotadas:
 | SPEC-004 | [Operação](specs/SPEC-004-operacao.md) | Health check, deploy, pipeline |
 | SPEC-900 | [Rastreabilidade](specs/SPEC-900-rastreabilidade.md) | Matriz requisito → código → teste |
 
-> **O processo funcionou:** a execução dos testes revelou duas divergências
-> entre a implementação e a especificação — cabeçalho `X-Frame-Options`
-> incorreto e erro 500 onde a spec exigia 4xx. Ambas estão registradas no fim da
-> SPEC-900 com suas correções.
+> **O processo funcionou — três defeitos reais foram barrados:**
+>
+> 1. Cabeçalho `X-Frame-Options` em `SAMEORIGIN` onde a spec exige `DENY` (RS-009)
+> 2. Erro 500 onde a spec exige 4xx para corpo acima do limite (RS-008, RS-011)
+> 3. **Vulnerabilidade de severidade alta** (ReDoS em `path-to-regexp`, via
+>    `express` 4.21.1) detectada pelo `npm audit` **na pipeline**, que bloqueou
+>    o deploy antes da publicação (RS-014, RS-016)
+>
+> Os dois primeiros vieram dos testes derivados das specs; o terceiro, do
+> scanner de dependências. Todos estão documentados no fim da
+> [SPEC-900](specs/SPEC-900-rastreabilidade.md) com suas correções.
 
 ---
 

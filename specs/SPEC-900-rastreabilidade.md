@@ -55,7 +55,24 @@ artefato da pipeline e enviada ao SonarCloud.
 Registro dos casos em que a especificação apontou divergência na implementação —
 evidência de que o processo SDD funcionou:
 
-| # | Divergência | Requisito | Correção |
-|---|---|---|---|
-| 1 | Helmet emitia `X-Frame-Options: SAMEORIGIN`; a spec exige `DENY` | RS-009 | `frameguard: { action: 'deny' }` em `src/app.ts` |
-| 2 | Corpo acima do limite produzia 500 em vez de 4xx | RS-008, RS-011 | Tratamento dos erros do interpretador de corpo em `src/middleware/errorHandler.ts` |
+| # | Divergência | Requisito | Detectado por | Correção |
+|---|---|---|---|---|
+| 1 | Helmet emitia `X-Frame-Options: SAMEORIGIN`; a spec exige `DENY` | RS-009 | Teste automatizado | `frameguard: { action: 'deny' }` em `src/app.ts` |
+| 2 | Corpo acima do limite produzia 500 em vez de 4xx | RS-008, RS-011 | Teste automatizado | Tratamento dos erros do interpretador de corpo em `src/middleware/errorHandler.ts` |
+| 3 | `express` 4.21.1 arrastava `path-to-regexp` com ReDoS de severidade alta ([GHSA-rhx6-c78j-4q9w](https://github.com/advisories/GHSA-rhx6-c78j-4q9w)), além de `qs` e `body-parser` com DoS moderado | RS-014 | **Pipeline — `npm audit`** | Atualização para `express` 4.22.3 |
+
+### Sobre o defeito nº 3
+
+Este caso é a demonstração prática de RS-016. A vulnerabilidade não estava no
+código escrito para esta atividade, mas em uma dependência transitiva — o tipo
+de falha que a revisão manual de código não encontra.
+
+A sequência observada na execução da pipeline foi:
+
+1. `build-test` — os 75 testes passaram; o `npm audit` reprovou o build.
+2. `security-scan` — **não executou** (`needs: build-test`).
+3. `deploy` — **não executou**.
+
+Ou seja, o portão funcionou como especificado: uma vulnerabilidade de
+severidade alta impediu que a versão chegasse à internet. Nenhuma ação manual
+foi necessária para bloquear a publicação.
