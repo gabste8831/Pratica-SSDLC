@@ -1,0 +1,47 @@
+{
+  "name": "securetasks",
+  "version": "1.0.0",
+  "description": "API de tarefas desenvolvida com Spec-Driven Development e SSDLC",
+  "main": "dist/server.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "test": "jest --runInBand",
+    "test:coverage": "jest --runInBand --coverage",
+    "lint": "eslint src tests --ext .ts",
+    "audit:ci": "npm audit --audit-level=high --omit=dev"
+  },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "better-sqlite3": "11.3.0",
+    "express": "4.21.1",
+    "express-rate-limit": "7.4.1",
+    "helmet": "8.0.0",
+    "jsonwebtoken": "9.0.2",
+    "pino": "9.5.0",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
+    "@types/better-sqlite3": "7.6.11",
+    "@types/express": "4.17.21",
+    "@types/jest": "29.5.14",
+    "@types/jsonwebtoken": "9.0.7",
+    "@types/node": "20.17.6",
+    "@types/supertest": "6.0.2",
+    "@typescript-eslint/eslint-plugin": "8.13.0",
+    "@typescript-eslint/parser": "8.13.0",
+    "eslint": "8.57.1",
+    "jest": "29.7.0",
+    "supertest": "7.0.0",
+    "ts-jest": "29.2.5",
+    "tsx": "4.19.2",
+    "typescript": "5.6.3"
+  },
+  "license": "MIT",
+  "private": true
+}

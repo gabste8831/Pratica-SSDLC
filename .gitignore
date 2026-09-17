@@ -1,0 +1,41 @@
+# Dependências e artefatos de build
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Banco de dados local
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Segredos — RS-015
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.ppk
+credentials
+aws_credentials
+
+# Estado do Terraform (pode conter valores sensíveis) — RS-015
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+!*.tfvars.example
+tfplan
+
+# Ferramentas e sistema operacional
+.scannerwork/
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+
+# Editores
+.vscode/
+.idea/

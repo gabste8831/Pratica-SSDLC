@@ -1,0 +1,7 @@
+# Scripts executados em Linux devem manter terminadores LF, sob pena de falharem
+# na instância EC2 com "bad interpreter".
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.tf text eol=lf

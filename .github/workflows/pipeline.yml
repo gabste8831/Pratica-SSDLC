@@ -1,0 +1,180 @@
+name: CI/CD — SecureTasks
+
+# Pipeline de entrega contínua (SPEC-004 §2).
+# O deploy só ocorre depois que os testes, o npm audit e o Quality Gate do
+# SonarCloud passam — o portão de RS-016 não tem caminho alternativo.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ------------------------------------------------------------------
+  # 1. Build, testes e auditoria de dependências
+  # ------------------------------------------------------------------
+  build-test:
+    name: Build, testes e auditoria
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v4
+        with:
+          # O SonarCloud usa o histórico para atribuir código novo a cada commit.
+          fetch-depth: 0
+
+      - name: Preparar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Verificar tipos
+        run: npx tsc --noEmit
+
+      - name: Executar testes com cobertura
+        run: npm run test:coverage
+        env:
+          NODE_ENV: test
+
+      # RS-014 — vulnerabilidade alta ou crítica em dependência de produção
+      # reprova o build.
+      - name: Auditar dependências (RS-014)
+        run: npm run audit:ci
+
+      - name: Publicar relatório de cobertura
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  # ------------------------------------------------------------------
+  # 2. Scanner de segurança — portão obrigatório (RS-016)
+  # ------------------------------------------------------------------
+  security-scan:
+    name: SonarCloud — análise e Quality Gate
+    runs-on: ubuntu-latest
+    needs: build-test
+
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preparar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # O Sonar relaciona a cobertura ao código analisado; por isso os testes
+      # são reexecutados aqui para gerar o lcov neste runner.
+      - name: Gerar cobertura para a análise
+        run: npm run test:coverage
+        env:
+          NODE_ENV: test
+
+      - name: Analisar com o SonarCloud
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      # Interrompe a pipeline se o Quality Gate reprovar (CA-004.5).
+      - name: Verificar o Quality Gate
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # ------------------------------------------------------------------
+  # 3. Implantação na EC2 e verificação da publicação
+  # ------------------------------------------------------------------
+  deploy:
+    name: Implantar na AWS EC2
+    runs-on: ubuntu-latest
+    needs: security-scan
+    # Só implanta a partir da branch principal, nunca de pull request.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v4
+
+      - name: Preparar a chave SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Enviar os arquivos da aplicação
+        run: |
+          tar czf app.tar.gz \
+            --exclude=node_modules --exclude=.git --exclude=dist \
+            --exclude=coverage --exclude=data \
+            src tests package.json package-lock.json tsconfig.json Dockerfile .dockerignore
+          scp -i ~/.ssh/deploy_key app.tar.gz \
+            ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/app.tar.gz
+          scp -i ~/.ssh/deploy_key scripts/deploy.sh \
+            ec2-user@${{ secrets.EC2_HOST }}:/home/ec2-user/deploy.sh
+
+      # RF-024 — o script constrói a imagem, sobe o container novo e só o mantém
+      # se ele responder ao health check; caso contrário, restaura o anterior.
+      - name: Construir a imagem e implantar
+        run: |
+          ssh -i ~/.ssh/deploy_key ec2-user@${{ secrets.EC2_HOST }} \
+            "chmod +x deploy.sh && JWT_SECRET='${{ secrets.JWT_SECRET }}' ./deploy.sh"
+
+      # CA-004.6 — critério objetivo de sucesso da publicação.
+      - name: Verificar a aplicação publicada
+        run: |
+          URL="http://${{ secrets.EC2_HOST }}/health"
+          echo "Verificando $URL"
+
+          for tentativa in $(seq 1 12); do
+            corpo=$(curl -fsS --max-time 10 "$URL" 2>/dev/null) && {
+              echo "Resposta: $corpo"
+              echo "$corpo" | grep -q '"status":"ok"' && {
+                echo "::notice::Aplicação publicada em http://${{ secrets.EC2_HOST }}"
+                exit 0
+              }
+            }
+            echo "Tentativa $tentativa/12 sem sucesso; aguardando..."
+            sleep 10
+          done
+
+          echo "::error::A aplicação não respondeu ao health check após o deploy"
+          exit 1
+
+      - name: Registrar o resultado
+        if: always()
+        run: |
+          {
+            echo "## Implantação"
+            echo ""
+            if [ "${{ job.status }}" = "success" ]; then
+              echo "Aplicação publicada: http://${{ secrets.EC2_HOST }}"
+              echo ""
+              echo "- Health check: http://${{ secrets.EC2_HOST }}/health"
+            else
+              echo "A implantação falhou. O container anterior foi mantido."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remover a chave SSH
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
